@@ -269,7 +269,7 @@ pub trait NFSFileSystem: Sync {
                 seconds: 0,
                 nseconds: 1000000,
             },
-            properties: nfs::FSF_SYMLINK | nfs::FSF_HOMOGENEOUS | nfs::FSF_CANSETTIME,
+            properties: nfs::FSF_LINK | nfs::FSF_SYMLINK | nfs::FSF_CANSETTIME,
         };
         Ok(res)
     }
