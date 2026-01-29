@@ -610,14 +610,15 @@ pub async fn nfsproc3_pathconf(
         Ok(v) => nfs::post_op_attr::attributes(v),
         Err(_) => nfs::post_op_attr::Void,
     };
+    let pathconf = context.vfs.pathconf(id);
     let res = PATHCONF3resok {
         obj_attributes: obj_attr,
-        linkmax: 0,
-        name_max: 32768,
-        no_trunc: true,
-        chown_restricted: true,
-        case_insensitive: false,
-        case_preserving: true,
+        linkmax: pathconf.linkmax,
+        name_max: pathconf.name_max,
+        no_trunc: pathconf.no_trunc,
+        chown_restricted: pathconf.chown_restricted,
+        case_insensitive: pathconf.case_insensitive,
+        case_preserving: pathconf.case_preserving,
     };
     debug!(" {:?} ---> {:?}", xid, res);
     make_success_reply(xid).serialize(output)?;

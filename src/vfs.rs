@@ -65,6 +65,36 @@ pub enum VFSCapabilities {
     ReadWrite,
 }
 
+/// PATHCONF information for a filesystem
+#[derive(Debug, Clone)]
+pub struct PathConf {
+    /// Maximum number of hard links to a file
+    pub linkmax: u32,
+    /// Maximum length of a file name
+    pub name_max: u32,
+    /// If true, the server will reject names longer than name_max
+    pub no_trunc: bool,
+    /// If true, chown is restricted to privileged users
+    pub chown_restricted: bool,
+    /// If true, the filesystem is case-insensitive
+    pub case_insensitive: bool,
+    /// If true, the filesystem preserves case in names
+    pub case_preserving: bool,
+}
+
+impl Default for PathConf {
+    fn default() -> Self {
+        Self {
+            linkmax: 1023,          // Standard limit, non-zero required for Windows NFS rename
+            name_max: 255,          // Standard POSIX limit
+            no_trunc: true,
+            chown_restricted: true,
+            case_insensitive: false,
+            case_preserving: true,
+        }
+    }
+}
+
 /// The basic API to implement to provide an NFS file system
 ///
 /// Opaque FH
@@ -283,5 +313,11 @@ pub trait NFSFileSystem: Sync {
     fn serverid(&self) -> cookieverf3 {
         let gennum = get_generation_number();
         gennum.to_le_bytes()
+    }
+
+    /// Get PATHCONF information for a file/directory.
+    /// Override to customize filesystem path configuration.
+    fn pathconf(&self, _id: fileid3) -> PathConf {
+        PathConf::default()
     }
 }
