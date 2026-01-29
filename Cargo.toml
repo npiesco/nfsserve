@@ -22,7 +22,7 @@ bytestream = "0.4"
 byteorder = "1.4"
 num-traits = "0.2"
 num-derive = "0.3"
-tokio = { version="1", features = [ "net", "io-util", "sync", "fs", "rt", "macros" ], default-features = false }
+tokio = { version="1", features = [ "net", "io-util", "sync", "fs", "rt", "macros", "time" ], default-features = false }
 futures = "0.3.21"
 tracing = "0.1.31"
 tracing-attributes = "0.1"
@@ -49,3 +49,12 @@ path = "examples/demo.rs"
 name = "mirrorfs"
 required-features = ["demo"]
 path = "examples/mirrorfs.rs"
+
+[[example]]
+name = "wintest"
+required-features = ["demo"]
+path = "examples/wintest.rs"
+
+[[test]]
+name = "windows_rename_test"
+required-features = ["demo"]

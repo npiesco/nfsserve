@@ -21,6 +21,8 @@ pub struct NFSTcpListener<T: NFSFileSystem + Send + Sync + 'static> {
     mount_signal: Option<mpsc::Sender<bool>>,
     export_name: Arc<String>,
     transaction_tracker: Arc<TransactionTracker>,
+    /// Port to report for NFS/MOUNT when acting as portmapper
+    nfs_port: Option<u16>,
 }
 
 pub fn generate_host_ip(hostnum: u16) -> String {
@@ -170,6 +172,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
             mount_signal: None,
             export_name: Arc::from("/".to_string()),
             transaction_tracker: Arc::new(TransactionTracker::new(Duration::from_secs(60))),
+            nfs_port: None,
         })
     }
 
@@ -187,6 +190,14 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcpListener<T> {
                 .trim_end_matches('/')
                 .trim_start_matches('/')
         ))
+    }
+
+    /// Sets the NFS port to report when acting as portmapper.
+    ///
+    /// When this listener handles portmapper requests (on port 111),
+    /// it should tell clients that NFS is on a different port (typically 2049).
+    pub fn with_nfs_port(&mut self, port: u16) {
+        self.nfs_port = Some(port);
     }
 }
 
@@ -215,6 +226,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
             let (socket, _) = self.listener.accept().await?;
             let context = RPCContext {
                 local_port: self.port,
+                nfs_port: self.nfs_port,
                 client_addr: socket.peer_addr().unwrap().to_string(),
                 auth: crate::rpc::auth_unix::default(),
                 vfs: self.arcfs.clone(),

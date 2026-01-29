@@ -7,6 +7,9 @@ use crate::transaction_tracker::TransactionTracker;
 #[derive(Clone)]
 pub struct RPCContext {
     pub local_port: u16,
+    /// Port to report for NFS/MOUNT when acting as portmapper.
+    /// If None, returns local_port (original behavior).
+    pub nfs_port: Option<u16>,
     pub client_addr: String,
     pub auth: crate::rpc::auth_unix,
     pub vfs: Arc<dyn NFSFileSystem + Send + Sync>,

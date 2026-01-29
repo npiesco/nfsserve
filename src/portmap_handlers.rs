@@ -78,6 +78,7 @@ pub fn pmapproc_null(
 
 /*
  * We fake a portmapper here. And always direct back to the same host port
+ * unless nfs_port is configured, in which case we return that for NFS/MOUNT.
  */
 pub fn pmapproc_getport(
     xid: u32,
@@ -89,7 +90,11 @@ pub fn pmapproc_getport(
     mapping.deserialize(read)?;
     debug!("pmapproc_getport({:?}, {:?}) ", xid, mapping);
     make_success_reply(xid).serialize(output)?;
-    let port = context.local_port as u32;
+    // If nfs_port is configured, return it for NFS (100003) and MOUNT (100005) programs
+    let port = match context.nfs_port {
+        Some(nfs_port) if mapping.prog == 100003 || mapping.prog == 100005 => nfs_port as u32,
+        _ => context.local_port as u32,
+    };
     debug!("\t{:?} --> {:?}", xid, port);
     port.serialize(output)?;
     Ok(())
