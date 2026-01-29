@@ -89,7 +89,7 @@ impl Default for PathConf {
             name_max: 255,          // Standard POSIX limit
             no_trunc: true,
             chown_restricted: true,
-            case_insensitive: false,
+            case_insensitive: true, // Required for Windows NFS client RENAME support
             case_preserving: true,
         }
     }
