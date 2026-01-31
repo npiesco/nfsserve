@@ -160,7 +160,8 @@ fn main() {
                 Ok(mut listener) => {
                     // Tell portmapper to report NFS on port 2049
                     listener.with_nfs_port(2049);
-                    eprintln!("Portmapper listening on 111");
+                    listener.with_export_name("share");
+                    eprintln!("Portmapper listening on 111 with export /share");
                     let _ = listener.handle_forever().await;
                 }
                 Err(e) => eprintln!("Failed to bind portmapper on 111: {:?}", e),
@@ -168,11 +169,12 @@ fn main() {
         });
 
         // Main NFS listener on 2049
-        let listener = NFSTcpListener::bind("0.0.0.0:2049", fs)
+        let mut listener = NFSTcpListener::bind("0.0.0.0:2049", fs)
             .await
             .expect("Failed to bind to port 2049");
+        listener.with_export_name("share");
 
-        eprintln!("Server ready. Mount with: mount -o nolock \\\\127.0.0.1\\ X:");
+        eprintln!("Server ready. Mount with: mount -o nolock \\\\127.0.0.1\\share X:");
 
         listener.handle_forever().await.unwrap();
     });
