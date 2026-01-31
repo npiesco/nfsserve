@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::{oneshot, watch};
+use tokio::sync::oneshot;
 use nfsserve::{
     nfs::{fattr3, fileid3, filename3, ftype3, nfspath3, nfsstat3, nfstime3, sattr3, specdata3},
     tcp::{NFSTcp, NFSTcpListener},
@@ -25,8 +25,6 @@ use nfsserve::{
 pub struct TestFS {
     files: Arc<Mutex<HashMap<(fileid3, String), (fileid3, Vec<u8>)>>>,
     next_id: Arc<Mutex<fileid3>>,
-    /// Signal when first NFS operation is received (proves client connected to us)
-    connected_tx: Arc<Mutex<Option<watch::Sender<bool>>>>,
 }
 
 impl Default for TestFS {
@@ -210,7 +208,7 @@ impl NFSFileSystem for TestFS {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_windows_commit_on_flush() {
     // Skip if not on Windows
     if cfg!(not(target_os = "windows")) {
@@ -279,16 +277,6 @@ async fn test_windows_commit_on_flush() {
     std::thread::sleep(Duration::from_secs(2));
     eprintln!("Servers fully ready");
 
-    // Restart NFS client services
-    let _ = Command::new("sc.exe").args(["stop", "NfsClnt"]).output();
-    std::thread::sleep(Duration::from_secs(1));
-    let _ = Command::new("sc.exe").args(["stop", "NfsRdr"]).output();
-    std::thread::sleep(Duration::from_secs(1));
-    let _ = Command::new("sc.exe").args(["start", "NfsRdr"]).output();
-    std::thread::sleep(Duration::from_secs(2));
-    let _ = Command::new("sc.exe").args(["start", "NfsClnt"]).output();
-    std::thread::sleep(Duration::from_secs(3));
-
     // Find a free drive letter
     let drive = ('D'..='Z').rev()
         .filter(|&c| c != 'Y')
@@ -302,10 +290,10 @@ async fn test_windows_commit_on_flush() {
     let _ = Command::new("net.exe").args(["use", &drive_str, "/delete", "/y"]).output();
     std::thread::sleep(Duration::from_secs(1));
 
-    // Mount the share
+    // Mount the share (use 127.0.0.1 not localhost - Windows may resolve localhost to IPv6)
     eprintln!("Attempting mount...");
     let mount_output = Command::new("mount")
-        .args(["-o", "anon,nolock,mtype=soft,fileaccess=6,rsize=128,wsize=128,timeout=60,retry=2", &format!("\\\\localhost\\share"), &drive_str])
+        .args(["-o", "anon,nolock", "\\\\127.0.0.1\\share", &drive_str])
         .output()
         .expect("Failed to run mount");
 

@@ -59,10 +59,13 @@ impl NFSFileSystem for TestFS {
 
     async fn lookup(&self, dirid: fileid3, filename: &filename3) -> Result<fileid3, nfsstat3> {
         let name = String::from_utf8_lossy(filename.as_ref()).to_string();
+        eprintln!(">>> LOOKUP: dirid={}, name={}", dirid, name);
         if name == "." { return Ok(dirid); }
         if name == ".." { return Ok(1); }
         let dirs = self.dirs.lock().unwrap();
-        dirs.get(&(dirid, name)).copied().ok_or(nfsstat3::NFS3ERR_NOENT)
+        let result = dirs.get(&(dirid, name)).copied().ok_or(nfsstat3::NFS3ERR_NOENT);
+        eprintln!(">>> LOOKUP result: {:?}", result);
+        result
     }
 
     async fn getattr(&self, id: fileid3) -> Result<fattr3, nfsstat3> {
@@ -150,13 +153,21 @@ impl NFSFileSystem for TestFS {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_windows_directory_rename() {
     // Skip if not on Windows
     if cfg!(not(target_os = "windows")) {
         eprintln!("Skipping test - not on Windows");
         return;
     }
+
+    // Clean up any stale mounts from previous tests
+    let _ = Command::new("umount.exe").args(["-f", "X:"]).output();
+    let _ = Command::new("umount.exe").args(["-f", "Z:"]).output();
+    let _ = Command::new("net.exe").args(["use", "X:", "/delete", "/y"]).output();
+    let _ = Command::new("net.exe").args(["use", "Z:", "/delete", "/y"]).output();
+    // Wait for Windows NFS client to clear cached connections
+    std::thread::sleep(Duration::from_secs(3));
 
     let fs = TestFS::default();
 
@@ -216,20 +227,13 @@ async fn test_windows_directory_rename() {
         Err(_) => panic!("NFS timeout"),
     }
 
-    // Restart NFS client services (blocking is OK here - external process)
-    let _ = Command::new("sc.exe").args(["stop", "NfsClnt"]).output();
-    std::thread::sleep(Duration::from_secs(1));
-    let _ = Command::new("sc.exe").args(["stop", "NfsRdr"]).output();
-    std::thread::sleep(Duration::from_secs(1));
-    let _ = Command::new("sc.exe").args(["start", "NfsRdr"]).output();
+    // Wait for servers to be fully ready
     std::thread::sleep(Duration::from_secs(2));
-    let _ = Command::new("sc.exe").args(["start", "NfsClnt"]).output();
-    std::thread::sleep(Duration::from_secs(3));
 
     // Mount the share
     eprintln!("Attempting mount...");
     let mount_output = Command::new("mount.exe")
-        .args(["-o", "nolock", "\\\\127.0.0.1\\share", "Z:"])
+        .args(["-o", "nolock", "\\\\127.0.0.1\\share", "X:"])
         .output()
         .expect("Failed to run mount");
 
@@ -244,13 +248,13 @@ async fn test_windows_directory_rename() {
 
     // Create a directory
     let mkdir_output = Command::new("cmd.exe")
-        .args(["/C", "mkdir", "Z:\\test_dir"])
+        .args(["/C", "mkdir", "X:\\test_dir"])
         .output()
         .expect("Failed to run mkdir");
 
     if !mkdir_output.status.success() {
         let stderr = String::from_utf8_lossy(&mkdir_output.stderr);
-        let _ = Command::new("umount.exe").args(["Z:"]).output();
+        let _ = Command::new("umount.exe").args(["X:"]).output();
         portmap_handle.abort();
         nfs_handle.abort();
         panic!("mkdir failed: {}", stderr);
@@ -259,12 +263,12 @@ async fn test_windows_directory_rename() {
 
     // RENAME THE DIRECTORY - This is the test that should fail (RED)
     let rename_output = Command::new("cmd.exe")
-        .args(["/C", "move", "Z:\\test_dir", "Z:\\renamed_dir"])
+        .args(["/C", "move", "X:\\test_dir", "X:\\renamed_dir"])
         .output()
         .expect("Failed to run move");
 
     // Cleanup
-    let _ = Command::new("umount.exe").args(["Z:"]).output();
+    let _ = Command::new("umount.exe").args(["X:"]).output();
     portmap_handle.abort();
     nfs_handle.abort();
 

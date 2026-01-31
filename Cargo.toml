@@ -58,3 +58,7 @@ path = "examples/wintest.rs"
 [[test]]
 name = "windows_rename_test"
 required-features = ["demo"]
+
+[[test]]
+name = "windows_commit_test"
+required-features = ["demo"]
