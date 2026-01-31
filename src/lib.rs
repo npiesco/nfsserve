@@ -1,4 +1,5 @@
 #![cfg_attr(feature = "strict", deny(warnings))]
+#![allow(non_local_definitions)]
 
 mod context;
 mod rpc;

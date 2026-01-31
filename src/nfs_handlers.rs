@@ -153,13 +153,13 @@ pub async fn handle_nfs(
         NFSProgram::NFSPROC3_MKDIR => nfsproc3_mkdir(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_SYMLINK => nfsproc3_symlink(xid, input, output, context).await?,
         NFSProgram::NFSPROC3_READLINK => nfsproc3_readlink(xid, input, output, context).await?,
+        NFSProgram::NFSPROC3_COMMIT => nfsproc3_commit(xid, input, output, context).await?,
         _ => {
             warn!("Unimplemented message {:?}", prog);
             proc_unavail_reply_message(xid).serialize(output)?;
         } /*
           NFSPROC3_MKNOD,
           NFSPROC3_LINK,
-          NFSPROC3_COMMIT,
           INVALID*/
     }
     Ok(())
@@ -2169,5 +2169,67 @@ pub async fn nfsproc3_readlink(
             symlink_attr.serialize(output)?;
         }
     }
+    Ok(())
+}
+
+/*
+COMMIT3res NFSPROC3_COMMIT(COMMIT3args) = 21;
+struct COMMIT3args {
+   nfs_fh3  file;
+   offset3  offset;
+   count3   count;
+};
+struct COMMIT3resok {
+   wcc_data file_wcc;
+   writeverf3 verf;
+};
+*/
+pub async fn nfsproc3_commit(
+    xid: u32,
+    input: &mut impl Read,
+    output: &mut impl Write,
+    context: &RPCContext,
+) -> Result<(), anyhow::Error> {
+    // Read COMMIT3args
+    let mut handle = nfs::nfs_fh3::default();
+    handle.deserialize(input)?;
+    let mut offset: u64 = 0;
+    offset.deserialize(input)?;
+    let mut count: u32 = 0;
+    count.deserialize(input)?;
+
+    debug!("nfsproc3_commit({:?}, offset={}, count={}) ", xid, offset, count);
+
+    let id = match context.vfs.fh_to_id(&handle) {
+        Ok(id) => id,
+        Err(stat) => {
+            make_success_reply(xid).serialize(output)?;
+            stat.serialize(output)?;
+            nfs::wcc_data::default().serialize(output)?;
+            return Ok(());
+        }
+    };
+
+    // Get file attributes for wcc_data
+    let post_attr = match context.vfs.getattr(id).await {
+        Ok(attr) => nfs::post_op_attr::attributes(attr),
+        Err(_) => nfs::post_op_attr::Void,
+    };
+
+    // COMMIT always succeeds since our WRITE uses FILE_SYNC
+    // (data is already committed to stable storage)
+    make_success_reply(xid).serialize(output)?;
+    nfs::nfsstat3::NFS3_OK.serialize(output)?;
+
+    // wcc_data
+    nfs::wcc_data {
+        before: nfs::pre_op_attr::Void,
+        after: post_attr,
+    }.serialize(output)?;
+
+    // writeverf3 (server verifier)
+    context.vfs.serverid().serialize(output)?;
+
+    debug!("nfsproc3_commit success {:?}", xid);
     Ok(())
 }
