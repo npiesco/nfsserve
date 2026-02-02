@@ -234,6 +234,7 @@ impl<T: NFSFileSystem + Send + Sync + 'static> NFSTcp for NFSTcpListener<T> {
                 export_name: self.export_name.clone(),
                 transaction_tracker: self.transaction_tracker.clone(),
             };
+            eprintln!(">>> TCP: Accepting connection from {}", context.client_addr);
             info!("Accepting connection from {}", context.client_addr);
             debug!("Accepting socket {:?} {:?}", socket, context);
             tokio::spawn(async move {

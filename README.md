@@ -48,8 +48,22 @@ mount_nfs -o nolocks,vers=3,tcp,rsize=131072,actimeo=120,port=11111,mountport=11
 ```
 
 On Windows (Pro required as Home does not have NFS client):
+
+For full Windows compatibility (RENAME, COMMIT, etc.), use the `wintest` example
+which runs portmapper on 111 and NFS on 2049:
 ```
-mount.exe -o anon,nolock,mtype=soft,fileaccess=6,casesensitive,lang=ansi,rsize=128,wsize=128,timeout=60,retry=2 \\127.0.0.1\\ X:
+cargo build --example wintest --features demo
+./target/debug/examples/wintest
+```
+
+Then mount:
+```
+mount.exe -o anon,nolock,mtype=soft,fileaccess=6,lang=ansi,rsize=128,wsize=128,timeout=60,retry=2 \\127.0.0.1\share X:
+```
+
+For the basic demo on a single port:
+```
+mount.exe -o anon,nolock,mtype=soft,fileaccess=6,lang=ansi,rsize=128,wsize=128,timeout=60,retry=2,port=11111,mntport=11111 \\127.0.0.1\ X:
 ```
 
 Note that the demo filesystem is *writable*. 
@@ -73,9 +87,6 @@ TODO and Seeking Contributors
  Link creation is also not supported.
  - The RPC message handling in `nfs_handlers.rs` leaves a lot to be desired.
  The response serialization is very manual. Some cleanup will be good.
- - Windows mount "kinda" works (only on Windows 11 Pro with the NFS server),
- but prints a lot of garbage due to various unimplemented APIs. Windows 11
- somehow tries to poll with very old NFS protocols constantly.
  - Many many perf optimizations. 
  - Maybe pull in the mount command from [xet-core](https://github.com/xetdata/xet-core/blob/main/rust/gitxetcore/src/xetmnt/mod.rs)
  so the user does not need to remember the `-o` incantations above.
@@ -83,6 +94,51 @@ TODO and Seeking Contributors
  - NFSv4 has some write performance optimizations that would be quite nice.
  The protocol is a bit more involving to implement though as it is somewhat
  stateful.
+
+Windows Support
+===============
+This fork includes enhancements for Windows NFS client compatibility. The
+Windows NFS client is picky about certain protocol responses, and without
+these fixes, operations like RENAME and flush would fail silently.
+
+What was added:
+ - `NFSPROC3_COMMIT` handler. Windows calls COMMIT after writes when an
+ application flushes. Without this, flush operations fail.
+ - Configurable `PATHCONF` via the `pathconf()` method on `NFSFileSystem`.
+ Windows requires `case_insensitive=true` and `linkmax > 0` or it refuses
+ to send RENAME operations.
+ - Portmapper port configuration. When running portmapper on 111 and NFS on
+ 2049, use `listener.with_nfs_port(2049)` so portmapper tells clients the
+ correct NFS port.
+ - `FSF_LINK` flag in FSINFO properties. Another thing Windows checks before
+ allowing RENAME.
+ - Custom export names via `with_export_name()`. For example `/share` instead
+ of just `/`.
+
+Example setup for Windows:
+```rust
+// Portmapper on 111, tells clients NFS is on 2049
+let mut portmapper = NFSTcpListener::bind("0.0.0.0:111", fs).await?;
+portmapper.with_nfs_port(2049);
+portmapper.with_export_name("share");
+
+// NFS on 2049
+let mut nfs = NFSTcpListener::bind("0.0.0.0:2049", fs).await?;
+nfs.with_export_name("share");
+```
+
+If you need custom PATHCONF values:
+```rust
+fn pathconf(&self, _id: fileid3) -> PathConf {
+    PathConf {
+        linkmax: 1023,          // Must be > 0 for Windows RENAME
+        case_insensitive: true, // Required for Windows RENAME
+        ..PathConf::default()
+    }
+}
+```
+
+See `examples/wintest.rs` for a complete working example.
 
 Relevant RFCs
 =============
@@ -96,6 +152,8 @@ Basic Source Layout
 ===================
  - context.rs: A connection context object that is passed around containing
  connection information, VFS information, etc.
+ - vfs.rs: The `NFSFileSystem` trait you implement, plus `PathConf` for
+ configurable PATHCONF responses.
  - xdr.rs: Serialization / Deserialization routines for XDR structures
  - tcp.rs: Main TCP handling entry point
  - rpcwire.rs: Reads and write RPC messages from a TCP socket and performs outer 
